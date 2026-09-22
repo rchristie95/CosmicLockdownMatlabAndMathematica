@@ -1,0 +1,14 @@
+# Generated simulations and build products
+build/
+cpp/**/build/
+cpp_output/
+results/
+*.exe
+*.o
+*.obj
+*.f64
+*.mat
+*.avi
+*.wav
+*.mp4
+__pycache__/

@@ -1,11 +1,12 @@
 function [audioPath, total_duration] = write_simple_sonification(basename, RhoSeq, plotSpan, ...
-        Xhat, Phat, Hb, mu, beta3, beta4, BSound, f0, fs)
+        Xhat, Phat, Hb, mu, beta3, beta4, BSound, f0, fs, volume)
+    if nargin < 13, volume = 1; end
     % Xhat = Xhat(1:BSound, 1:BSound, :);
     % Phat = Phat(1:BSound, 1:BSound, :);
     % RhoSeq=RhoSeq(1:BSound, 1:BSound, :);
 
     % 1) Instantaneous eigen-representation with TIME TRACKING + PHASE FIX
-    [outRho, Ener] = HamiltonianEigenrep(RhoSeq, plotSpan, Xhat, Phat, Hb, mu, beta3, beta4);
+    [outRho, Ener] = HamiltonianEigenrep(RhoSeq, plotSpan, Xhat, Phat, Hb, mu, beta3, beta4, volume);
     outRho=outRho(1:BSound, 1:BSound, :);
     Ener=Ener(1:BSound,:);
     % 2) Render 30 s stereo audio using FIXED f0
@@ -20,7 +21,7 @@ function [audioPath, total_duration] = write_simple_sonification(basename, RhoSe
 end
 
 
-function [outRho, EnergiesOut] = HamiltonianEigenrep(RhoIn, plotSpan, Xhat, Phat, Hb,mu, beta3, beta4)
+function [outRho, EnergiesOut] = HamiltonianEigenrep(RhoIn, plotSpan, Xhat, Phat, Hb,mu, beta3, beta4, volume)
 % TIME-TRACKED instantaneous eigen-representation.
 % - Sorts the FIRST frame by ascending energy.
 % - For subsequent frames: assigns modes by maximum overlap with previous eigenbasis.
@@ -42,8 +43,8 @@ function [outRho, EnergiesOut] = HamiltonianEigenrep(RhoIn, plotSpan, Xhat, Phat
     EnergiesOut  = zeros(bSize,T);
 
     Id  = eye(bSize);
-    H0     = @(Ne) (0.5/Hb) * (Phat^2 * exp(-3*Ne) ...
-    + (-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne));
+    H0 = @(Ne) (Phat^2 * exp(-3*Ne)/(2*volume) ...
+    + volume*(-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne))/Hb;
     % --- Frame 1: eigendecomposition, sort by ascending energy
     [V_prev, D_prev] = eig(full(H0(plotSpan(1))));
     E_prev = real(diag(D_prev));

@@ -1,11 +1,15 @@
 function [plotSpan, PsiStore, RhoStore] = SchrodingerSingleTrajectory_ExpStep_1000( ...
-    TSpan, bSize, hbar, mu, beta3, beta4, Hb)
+    TSpan, bSize, hbar, mu, beta3, beta4, Hb, volume)
+
+% Keep the historical volume=1 for other workflows; X drivers pass 4*sqrt(2).
+if nargin < 8, volume = 1; end
+validateattributes(volume, {'numeric'}, {'scalar','real','finite','positive'});
 
 % SchrodingerSingleTrajectory_ExpStep_1000
 %   Fixed-step propagator for
 %       dψ/dN = -(i/ħ) H(N) ψ ,
 %   with
-%       H(N) = ½ P̂² e^{-3N} + Vχ e^{+3N}
+%       H(N) = P^2 exp(-3N)/(2 Hb volume) + volume V exp(3N)/Hb
 %
 % Entire evolution is done in a big basis of size 3*bSize.
 % Initial state is the ground state of the effective Hamiltonian
@@ -46,8 +50,8 @@ P2b  = Pb'*Pb;
 Vchi_b = -(mu^2/2)*X2b + (2*beta3*mu/3)*X3b ...
          + ((beta4^2 - beta3^2)/4)*X4b;
 
-H1b = (0.5/Hb)*P2b;
-H2b = (1.0/Hb)*Vchi_b;
+H1b = (0.5/(Hb*volume))*P2b;
+H2b = (volume/Hb)*Vchi_b;
 
 %% ---- initial state: ground state of H_eff(N0) in big basis -----------
 a2_0   = exp(3*N0);

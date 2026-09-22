@@ -1,0 +1,25 @@
+name: Numerical checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  cpp:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - run: cmake -S cpp/cosmic_lockdown -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --config Release
+      - run: ctest --test-dir build -C Release --output-on-failure
+  matlab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2025b
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('tests'); run_position_monitoring_tests

@@ -15,6 +15,8 @@ hbar      = 1;        % Reduced Planck constant
 mu    = 0.5;      % Potential parameter: height scale
 beta3=0.025;        % Potential parameter: separation between minima
 beta4=0.13;
+volume = 4*sqrt(2);  % Paper Eq. (2.8); characteristic crossover is N=0.
+assert(abs(log(1/(2*volume^2*mu^6))/6) < 1e-12);
 
 
 
@@ -61,8 +63,8 @@ ProjR = (ProjR + ProjR')/2;
 
 
 %% Initial Instantaneous Hamiltonian & State
-H0     = @(Ne) (0.5/Hb) * (Phat^2 * exp(-3*Ne) ...
-    + (-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne));
+H0 = @(Ne) (Phat^2 * exp(-3*Ne)/(2*volume) ...
+    + volume*(-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne))/Hb;
 
 % Build the Hamiltonian for the chosen e-fold N0
 Hinit = H0(N0);
@@ -99,9 +101,9 @@ trace(ProjR*(PsiIn*PsiIn'))
 
 %% instanteneous trajectory
 plotSpanInst=linspace(-2,1,1001);
-Hinit = @(Z,n) (exp(3*plotSpanInst(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2*exp(-3*plotSpanInst(n)))/Hb;
+Hinit = @(Z,n) (volume*exp(3*plotSpanInst(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2/volume*exp(-3*plotSpanInst(n)))/Hb;
 
-[PsiInst,RhoInst]= AdiabaticGroundStates(bSize, hbar, mu, beta3, beta4, Hb, plotSpanInst);
+[PsiInst,RhoInst]= AdiabaticGroundStates(bSize, hbar, mu, beta3, beta4, Hb, plotSpanInst, volume);
 targets = [-2, 0.0,1];
 
 for k = 1:1001
@@ -137,8 +139,8 @@ Pc=linspace(-Xview, Xview, Nx);
 [xMesh1, pMesh1] = meshgrid(Xc, Pc);
 % 
 % Helper for Hamiltonian contour at a given frame index
-Hgrid_at = @(k) ( exp(3*k) .* (-(mu^2/2).*xMesh1.^2 +(2*mu*beta3/3).*xMesh1.^3 +((beta4^2-beta3^2)/4).*xMesh1.^4) ...
-                + 0.5 .* pMesh1.^2 .* exp(-3*k) ) / Hb;
+Hgrid_at = @(k) ( volume*exp(3*k) .* (-(mu^2/2).*xMesh1.^2 +(2*mu*beta3/3).*xMesh1.^3 +((beta4^2-beta3^2)/4).*xMesh1.^4) ...
+                + 0.5/volume .* pMesh1.^2 .* exp(-3*k) ) / Hb;
 
 % Compute initial contour data
 Z_initial = arrayfun(@(x, y) Hinit([x; y], 1), xMesh, pMesh);
@@ -239,7 +241,7 @@ clear flipbook
 Xc=linspace(-Xview, Xview, Nx);
 Pc=linspace(-Xview, Xview, Nx);
 % H = @(Z,n) (6*exp(3*plotSpan(n))*sqrt((0.5*c2*Z(1)^2+0.5*Z(2)^2*exp(-6*plotSpan(n)))/3));
-Hinit = @(Z,n) (exp(3*plotSpanInst(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2*exp(-3*plotSpanInst(n)))/Hb;
+Hinit = @(Z,n) (volume*exp(3*plotSpanInst(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2/volume*exp(-3*plotSpanInst(n)))/Hb;
 
 % Define your meshgrid
 [xMesh, pMesh] = meshgrid(x, p); % Adjust the limits and resolution as needed
@@ -362,7 +364,7 @@ close all;
 targets = [-1, 0.0, 1];
 
 tic
-[plotSpanHam,PsiSchrodinger , RhoSchrodinger]=SchrodingerSingleTrajectory_ExpStep_1000( TSpan,bSize, hbar,mu,beta3, beta4, Hb);
+[plotSpanHam,PsiSchrodinger , RhoSchrodinger]=SchrodingerSingleTrajectory_ExpStep_1000( TSpan,bSize, hbar,mu,beta3, beta4, Hb, volume);
 timeHam=toc
 
 nFramesHam=length(plotSpanHam);
@@ -489,7 +491,7 @@ exportgraphics(fig,'Hamwigner_panel_c_Ne_+0p75.pdf','ContentType', 'image', 'Res
 Xc=linspace(-Xview, Xview, Nx);
 Pc=linspace(-Xview, Xview, Nx);
 % H = @(Z,n) (6*exp(3*plotSpanHam(n))*sqrt((0.5*c2*Z(1)^2+0.5*Z(2)^2*exp(-6*plotSpanHam(n)))/3));
-Hinit = @(Z,n) (exp(3*plotSpanHam(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2*exp(-3*plotSpanHam(n)))/Hb;
+Hinit = @(Z,n) (volume*exp(3*plotSpanHam(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2/volume*exp(-3*plotSpanHam(n)))/Hb;
 
 % Define your meshgrid
 [xMesh, pMesh] = meshgrid(x, p); % Adjust the limits and resolution as needed
@@ -620,7 +622,7 @@ rng('shuffle');   % seed RNG based on current time
 [dN_plot, plotSpanSSE] = dnPPlot(N0, Nend,1e-7,1001);
 % eta=(randn(Nsteps+1,1));
 tic
-% [~,PsiSSE, RhoSSE] = SSEDynamics_X_Sparse(   bSize, hbar, mu, beta3, beta4, lambda, Hb,plotSpanSSE,dN_plot);
+[~,PsiSSE, RhoSSE] = SSEDynamics_X_Sparse(   bSize, hbar, mu, beta3, beta4, lambda, Hb,plotSpanSSE,dN_plot,volume);
 % [~,PsiSSE, RhoSSE] = SSEDynamics_XP_ExpIntSparse(   bSize, hbar, mu, beta3, beta4, lambda, Hb, Xhat, Phat,plotSpanSSE,dN_plot);
 
 
@@ -670,9 +672,9 @@ Xc = linspace(-Xview, Xview, Nx);
 Pc = linspace(-Xview, Xview, Nx);
 
 Hinit = @(Z,n) ( ...
-    exp(3*plotSpanSSE(n)) * ( ...
+    volume*exp(3*plotSpanSSE(n)) * ( ...
         -(mu^2/2)*Z(1)^2 + (2*mu*beta3/3)*Z(1)^3 + ((beta4^2-beta3^2)/4)*Z(1)^4 ) ...
-    + 0.5*Z(2)^2 * exp(-3*plotSpanSSE(n)) ) / Hb;
+    + 0.5*Z(2)^2/volume * exp(-3*plotSpanSSE(n)) ) / Hb;
 
 % Meshgrids
 [xMesh,  pMesh]  = meshgrid(x,  p);      % for Wigner
@@ -790,7 +792,7 @@ rng('shuffle');   % seed RNG based on current time
 
 % eta=(randn(Nsteps+1,1));
 tic
-% [~,PsiSSE2, RhoSSE2] = SSEDynamics_X_Sparse(   bSize, hbar, mu, beta3, beta4, lambda, Hb,plotSpanSSE,dN_plot);
+[~,PsiSSE2, RhoSSE2] = SSEDynamics_X_Sparse(   bSize, hbar, mu, beta3, beta4, lambda, Hb,plotSpanSSE,dN_plot,volume);
 
 
 timeSSE=toc
@@ -948,7 +950,7 @@ close all;
 tic
 % [plotSpanLind, RhoLind,dNsLind] = Markov2Lindblads_Adaptive_Sparse_Dopri (PsiIn*PsiIn', Xhat, Phat, TSpan, hbar, mu,beta3, beta4, lambda, Hb,true);
 % [plotSpanLind, RhoLind] = Markov_2Lindblads_ExpStep_1000 ( TSpan,bSize, hbar, mu,beta3, beta4, lambda, Hb,true);
-[plotSpanLind, RhoLind] = Markov_LindbladX_ExpStep_1000 ( TSpan,bSize, hbar, mu,beta3, beta4, lambda, Hb,true);
+[plotSpanLind, RhoLind] = Markov_LindbladX_ExpStep_1000 ( TSpan,bSize, hbar, mu,beta3, beta4, lambda, Hb,true,volume);
 
 timeLind=toc
 
@@ -1197,7 +1199,7 @@ clear flipbook
 WigLind = RhoWigner(RhoLindPos, x, p, hbar);
 
 figureHandle = figure('Position', [100, 100, 800, 800 * aspectRatio(2) / aspectRatio(1)]);
-Hinit = @(Z,n) (exp(3*plotSpanLind(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2*exp(-3*plotSpanLind(n)))/Hb;
+Hinit = @(Z,n) (volume*exp(3*plotSpanLind(n))*(-(mu^2/2)*Z(1)^2+(2*mu*beta3/3)*Z(1)^3+((beta4^2-beta3^2)/4)*Z(1)^4)+0.5*Z(2)^2/volume*exp(-3*plotSpanLind(n)))/Hb;
 
 % Initialize pcolor plot with the first set of data
 f = pcolor(xMesh, pMesh, WigLind(:,:,1));
@@ -1393,7 +1395,7 @@ varsToKeep = { ...
     'plotSpanInst','plotSpanHam','plotSpanSSE','plotSpanLind', ...
     'N0','Nend','H0', ...
     'Xhat','Phat', ...
-    'Hb','mu','beta3','beta4','lambda', ...
+    'Hb','mu','beta3','beta4','lambda','volume', ...
     'InstVideoPath','HamVideoPath','SSEVideoPath','SSEVideoPath2','LindVideoPath'};
 
 clearvars('-except', varsToKeep{:});   % nukes x/p grids, HVector, Wigner arrays, etc.
@@ -1438,11 +1440,11 @@ end
 
 
 % ===================== Render 30s audio for each trajectory =====================
-% [InstAudioPath,  InstAudioDur]  = write_simple_sonification('Inst',  RhoInst, plotSpanInst,  Xhat, Phat, Hb, mu, beta3, beta4,BSound, f0, fs);
-% [HamAudioPath,  HamAudioDur]  = write_simple_sonification('Ham',  RhoSchrodinger, plotSpanHam,  Xhat, Phat, Hb, mu, beta3, beta4, BSound, f0, fs);
-[SSEAudioPath,  SSEAudioDur]  = write_simple_sonification('SSE',  RhoSSE,         plotSpanSSE,  Xhat, Phat, Hb, mu, beta3,  beta4,BSound, f0, fs);
-[SSEAudioPath2,  SSEAudioDur2]  = write_simple_sonification('SSE2',  RhoSSE2,         plotSpanSSE,  Xhat, Phat, Hb, mu, beta3,  beta4,BSound, f0, fs);
-% [LindAudioPath, LindAudioDur] = write_simple_sonification('Lind', RhoLind,        plotSpanLind, Xhat, Phat, Hb, mu, beta3, beta4,BSound, f0, fs);
+% [InstAudioPath,  InstAudioDur]  = write_simple_sonification('Inst',  RhoInst, plotSpanInst,  Xhat, Phat, Hb, mu, beta3, beta4,BSound, f0, fs, volume);
+% [HamAudioPath,  HamAudioDur]  = write_simple_sonification('Ham',  RhoSchrodinger, plotSpanHam,  Xhat, Phat, Hb, mu, beta3, beta4, BSound, f0, fs, volume);
+[SSEAudioPath,  SSEAudioDur]  = write_simple_sonification('SSE',  RhoSSE,         plotSpanSSE,  Xhat, Phat, Hb, mu, beta3,  beta4,BSound, f0, fs, volume);
+[SSEAudioPath2,  SSEAudioDur2]  = write_simple_sonification('SSE2',  RhoSSE2,         plotSpanSSE,  Xhat, Phat, Hb, mu, beta3,  beta4,BSound, f0, fs, volume);
+% [LindAudioPath, LindAudioDur] = write_simple_sonification('Lind', RhoLind,        plotSpanLind, Xhat, Phat, Hb, mu, beta3, beta4,BSound, f0, fs, volume);
 % % (Each *_AudioDur will be 30.000 s)
 
 % ===================== Merge each with its 30s Wigner video =====================
@@ -1653,7 +1655,8 @@ end
 
 
 
-function [outRho, EnergiesOut, EnergyOcc] = HamiltonianEigenrep2(RhoIn, plotSpan, Xhat, Phat, Hb, mu, beta3, beta4)
+function [outRho, EnergiesOut, EnergyOcc] = HamiltonianEigenrep2(RhoIn, plotSpan, Xhat, Phat, Hb, mu, beta3, beta4, volume)
+if nargin < 9, volume = 4*sqrt(2); end
 % HamiltonianEigenrep2
 % Inputs:
 %   RhoIn (bSize x bSize x N): density matrices in the fixed basis at each time
@@ -1674,8 +1677,8 @@ EnergyOcc   = zeros(bSize, N);
 outRho      = zeros(bSize, bSize, N);
 
 Id  = eye(bSize);
-H0     = @(Ne) (0.5/Hb) * (Phat^2 * exp(-3*Ne) ...
-    + (-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne));
+H0 = @(Ne) (Phat^2 * exp(-3*Ne)/(2*volume) ...
+    + volume*(-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne))/Hb;
 
 for n = 1:N
     % Diagonalize instantaneous Hamiltonian

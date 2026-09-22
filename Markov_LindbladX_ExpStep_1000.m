@@ -1,22 +1,13 @@
 function [plotSpan, RhoStore] = Markov_LindbladX_ExpStep_1000( ...
-    TSpan, bSize, hbar, mu, beta3, beta4, lambda, Hb, displayFlag)
-% 1000-step fixed-time integrator with split evolution:
-%   - For t < -1: Schrödinger evolution on a state vector in a
-%                 Hilbert space of size 2N.
-%   - For t >= -1: Lindblad evolution on a density matrix of size N.
-%
-% Initial state: ground state (minimum eigenvector) of the
-% time-dependent Hamiltonian at t = TSpan(1), in the large basis (2N).
-%
-%   Inputs:
-%       TSpan       - [t0, tF]
-%       N           - small-basis size; large basis is 2N
-%       hbar, mu, beta3, beta4, lambda, Hb - parameters
-%       displayFlag - if true, print observables each step
-%
-%   Outputs:
-%       plotSpan    - stored times
-%       RhoStore    - density matrices in the small basis (N x N x nSaves)
+    TSpan, bSize, hbar, mu, beta3, beta4, lambda, Hb, displayFlag, volume)
+% 1000 midpoint-exponential steps for the paper's position-monitoring GKLS equation.
+% Monitoring acts from TSpan(1), including N < -1. hbar=1.
+% The initial ground state is computed in 3*bSize, projected and normalized;
+% density-matrix propagation uses bSize throughout. Check basis convergence.
+% Optional volume defaults to 4*sqrt(2), giving Nstar=0 when mu=.5.
+if nargin < 10, volume = 4*sqrt(2); end
+assert(hbar == 1, 'The paper X-monitoring model uses hbar=1.');
+[kineticScale,potentialScale,GammaScale] = PositionMonitoringCoefficients(0,mu,lambda,Hb,volume);
 
 tic
 
@@ -31,7 +22,7 @@ else
     dt = (tF - t0)/nSteps;
 end
 
-% ---- big-basis (size 2N) operators for Schrödinger evolution ----------
+% ---- big-basis (size 3N) operators for initial preparation ----------
 BigbSize = 3*bSize;
 
 ab = zeros(BigbSize);
@@ -54,8 +45,8 @@ Xpow4b = Xpow3b*Xb;
 Vchi_b = -(mu^2/2)*Xpow2b + (2*beta3*mu/3)*Xpow3b ...
          + ((beta4^2-beta3^2)/4)*Xpow4b;
 
-H1b = (0.5/Hb)*P2b;
-H2b = (1.0/Hb)*Vchi_b;
+H1b = kineticScale*P2b;
+H2b = potentialScale*Vchi_b;
 
 % ---- initial state: ground state of H_eff(t0) in big basis ------------
 a2_0   = exp(3*t0);
@@ -91,8 +82,8 @@ Xpow4 = Xpow3*X;
 Vchi  = -(mu^2/2)*Xpow2 + (2*beta3*mu/3)*Xpow3 ...
         + ((beta4^2-beta3^2)/4)*Xpow4;
 
-H1 = (0.5/Hb)*P2;
-H2 = (1.0/Hb)*Vchi;
+H1 = kineticScale*P2;
+H2 = potentialScale*Vchi;
 
 % ---- Lindblad superoperators (small basis) -----------------------------
 N2   = bSize*bSize;
@@ -139,61 +130,18 @@ for k = 1:nSteps
     a2 = exp(3*tm);
     a1 = 1/a2;
 
-    if t < -1.
-        % ----- Schrödinger evolution in big basis when Lindblad term suppressed ----------------------
-        H_eff = a1*H1b + a2*H2b;
-        Lpsi  = (-1i/hbar) * H_eff;
-
-        % expmv convention: expmv(A, v, t)
-        psi_big = expmv(Lpsi, psi_big, dt);
-        psi_big = psi_big / norm(psi_big);
-
-        % reduced density on small basis
-        psi_small = psi_big(1:bSize);
-        R = psi_small * psi_small';
-
-        % normalize trace and sync y
-        tr = real(trace(R));
-        if tr ~= 0
-            R = R / tr;
-        end
-        y = R(:);
-
-        % observables w.r.t the large basis for output
-        if displayFlag
-            phi_big    = real(psi_big' * Xb      * psi_big);
-            varPhi_big = real(psi_big' * Xpow2b  * psi_big) - phi_big^2;
-            purity_big = real((psi_big' * psi_big)^2);  % ~1 if normalized
-
-            fprintf(['λ=%+6.3f  Hb=%+6.3f  φ=%+6.3f  Var(φ)=%.3f  Purity=%.3f  ', ...
-                     'N=%.3g  dN=%1.1e  time=%.3g\n'], ...
-                     lambda, Hb, phi_big, varPhi_big, purity_big, t+dt, dt, toc);
-        end
-    else
-        % ----- Lindblad evolution in small basis -----------------------
-        GGamma = (131*pi*lambda^2 * (a2*a2)) / (512*mu^5);
-
-        % Liouvillian: L = a1*LH1 + a2*LH2 + GGamma*DX
-        L = a1*LH1 + a2*LH2 + GGamma*DX;
-
-        y = expmv(L, y, dt);
-
-        % trace re-normalize
-        tr = real(vecI' * y);
-        if tr ~= 0
-            y = y / tr;
-        end
-
-        R = reshape(y, bSize, bSize);
-
-        if displayFlag
-            phi    = real(trace(R*X));
-            varPhi = real(trace(R*Xpow2)) - phi^2;
-            purity = real(trace(R*R));
-            fprintf(['λ=%+6.3f  Hb=%+6.3f  φ=%+6.3f  Var(φ)=%.3f  Purity=%.3f  ', ...
-                     'N=%.3g  dN=%1.1e  time=%.3g\n'], ...
-                     lambda, Hb, phi, varPhi, purity, t+dt, dt, toc);
-        end
+    Gamma = GammaScale*exp(6*tm);
+    % D[X] = -[X,[X,rho]]/2: Gamma has denominator 256, not 512.
+    L = a1*LH1 + a2*LH2 + Gamma*DX;
+    y = expmv(L, y, dt);
+    tr = real(vecI' * y);
+    if ~isfinite(tr) || tr <= 0
+        error('CosmicLockdown:InvalidTrace', 'Invalid GKLS trace; check the exponential solver.');
+    end
+    y = y/tr;
+    R = reshape(y,bSize,bSize);
+    if displayFlag
+        fprintf('X-GKLS: N=%+.3f trace=%.12g purity=%.6g\n',t+dt,real(trace(R)),real(trace(R*R)));
     end
 
     % advance time and store

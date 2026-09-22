@@ -13,6 +13,8 @@ hbar      = 1;        % Reduced Planck constant
 mu    = 0.5;      % Potential parameter: height scale
 beta3=0.025;        % Potential parameter: separation between minima
 beta4=0.13;
+volume = 4*sqrt(2);  % Paper Eq. (2.8); characteristic crossover is N=0.
+assert(abs(log(1/(2*volume^2*mu^6))/6) < 1e-12);
 lambda=0.05;
 Hb        =0.5;     % Hubble scale parameter
 
@@ -60,15 +62,15 @@ ProjR = (ProjR + ProjR')/2;
 
 
 %% Initial Instantaneous Hamiltonian & State
-H0     = @(Ne) (0.5/Hb) * (Phat^2 * exp(-3*Ne) ...
-    + (-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne));
+H0 = @(Ne) (Phat^2 * exp(-3*Ne)/(2*volume) ...
+    + volume*(-(mu^2/2)*Xhat^2 + (2*mu*beta3/3)*Xhat^3 + (beta4^2-beta3^2)*Xhat^4/4) * exp(3*Ne))/Hb;
 
 
 %% Instantaneos Trajectory Hb=0
 
 
 plotSpanInst=linspace(N0,Nend,501);
-[PsiInst,RhoInst]= AdiabaticGroundStates(bSize, hbar, mu, beta3, beta4, Hb, plotSpanInst);
+[PsiInst,RhoInst]= AdiabaticGroundStates(bSize, hbar, mu, beta3, beta4, Hb, plotSpanInst, volume);
 
 for k = 1:501
 
@@ -100,7 +102,7 @@ PlotSpanSweepLindHb  = cell(NZenoHb,1);
 
 for n = 1:NZenoHb
     if n>1
-        [plotSpanTemp, RhoTemp] = Markov_LindbladX_ExpStep_1000(  TSpan, bSize, hbar,mu, beta3, beta4, lambda, HbRange(n),true);
+        [plotSpanTemp, RhoTemp] = Markov_LindbladX_ExpStep_1000(  TSpan, bSize, hbar,mu, beta3, beta4, lambda, HbRange(n),true,volume);
     else
         plotSpanTemp=plotSpanInst;
         RhoTemp=RhoInst;
@@ -210,7 +212,7 @@ PlotSpanSweepLambda = cell(NZenoLambda,1);
 
 for n = 1:NZenoLambda
     
-    [plotSpanTemp, RhoTemp] =Markov_LindbladX_ExpStep_1000(  TSpan, bSize, hbar,mu, beta3, beta4, LambdaRange(n), Hb,true);
+    [plotSpanTemp, RhoTemp] =Markov_LindbladX_ExpStep_1000(  TSpan, bSize, hbar,mu, beta3, beta4, LambdaRange(n), Hb,true,volume);
 
     
     nFrames      = numel(plotSpanTemp);    % or however you define it earlier

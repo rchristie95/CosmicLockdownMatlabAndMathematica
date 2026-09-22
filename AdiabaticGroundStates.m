@@ -1,5 +1,9 @@
 function [PsiSmallInst, RhoSmallInst] = AdiabaticGroundStates( ...
-    bSize, hbar, mu, beta3, beta4, Hb, plotSpanInst)
+    bSize, hbar, mu, beta3, beta4, Hb, plotSpanInst, volume)
+
+    % Other coupling workflows retain volume=1 unless explicitly changed.
+    if nargin < 8, volume = 1; end
+    validateattributes(volume, {'numeric'}, {'scalar','real','finite','positive'});
 
     % ensure row vector
     plotSpanInst = plotSpanInst(:).';
@@ -30,8 +34,8 @@ function [PsiSmallInst, RhoSmallInst] = AdiabaticGroundStates( ...
     Vchi  = -(mu^2/2)*Xpow2 + (2*beta3*mu/3)*Xpow3 ...
             + ((beta4^2 - beta3^2)/4)*Xpow4;
 
-    H1 = sparse((0.5/Hb)*P2);
-    H2 = sparse((1.0/Hb)*Vchi);
+    H1 = sparse((0.5/(Hb*volume))*P2);
+    H2 = sparse((volume/Hb)*Vchi);
 
     % small-basis X operator for observables
     Xsmall = X(1:bSize, 1:bSize);
