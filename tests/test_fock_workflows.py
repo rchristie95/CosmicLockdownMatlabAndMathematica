@@ -17,6 +17,13 @@ from fock_media import read, operators, analytic_wigner, render
 def main(binary, output, media=False):
     binary = Path(binary).resolve(); output = Path(output).resolve(); output.mkdir(parents=True, exist_ok=True)
     report = {'cases': [], 'refinement': [], 'analytic': {}, 'media': []}
+    large=np.zeros((400,400),complex);large[0,0]=1;wide=np.array([0.,10.,28.])
+    expected=np.exp(-wide[:,None]**2-wide[None,:]**2)/np.pi
+    assert np.max(abs(analytic_wigner(large,wide)-expected))<1e-14
+    large[:]=0;large[-1,-1]=1
+    large_wigner=analytic_wigner(large,wide)
+    assert np.isfinite(large_wigner).all() and abs(large_wigner[0,0]+1/np.pi)<1e-12
+    report['analytic']['large_basis_wigner']=400
     def run(name, workflow='sse', model='x', initial=-.2, final=-.18, step=.001,
             basis=6, frames=3, coupling=.2, extra=(), wigner=False):
         folder = output / name

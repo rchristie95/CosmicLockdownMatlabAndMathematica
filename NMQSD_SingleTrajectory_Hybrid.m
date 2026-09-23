@@ -251,5 +251,3 @@ if idxSwitch < numel(TSpan)
     end
 end
 end  % ==== main function ====
-
-

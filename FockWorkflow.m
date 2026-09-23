@@ -38,6 +38,7 @@ for frame=2:numel(times)
         dt=min(maxstep,times(frame)-t);
         if ((sse||lind)&&power~=1 || nms) && t<-1 && t+dt>-1, dt=-1-t; end
         next=t+dt;
+        assert(next>t,'Step is too small to advance floating-point time.');
         if closed
             psi=unitary(psi,H(big,t+.5*dt,c),dt,c.hbar);
         elseif sse

@@ -109,7 +109,9 @@ struct Snapshot {double t;V psi;M rho;};
 struct Result {std::vector<Snapshot> frames;std::vector<double> noise;std::vector<C> zeta;double residual=0;};
 inline Result solve(Config c){
     check(c.basis>=2&&c.basis<=512&&c.step>0&&c.final>=c.initial&&c.H>0&&c.hbar>0&&c.mu>0&&
-          c.lambda>=0&&c.omega>0&&c.vol()>0,"Invalid physical/numerical parameters");
+          c.lambda>=0&&c.omega>0&&c.volume>=0&&c.vol()>0,"Invalid physical/numerical parameters");
+    for(double v:{c.hbar,c.mu,c.beta3,c.beta4,c.lambda,c.H,c.initial,c.final,c.step,c.volume,c.omega})
+        check(std::isfinite(v),"Non-finite parameter");
     check(c.model=="x"||c.model=="x2"||c.model=="x3","Unknown model");
     check(!(c.model=="x"&&(c.workflow=="sse"||c.workflow=="lindblad"))||c.hbar==1,"Paper X model requires hbar=1");
     bool sse=c.workflow=="sse",lind=c.workflow=="lindblad",closed=c.workflow=="closed";
@@ -153,6 +155,7 @@ inline Result solve(Config c){
             bool switched_model=(sse||lind)&&c.power()!=1;
             if((switched_model||nms)&&t<-1&&t+dt>-1)dt=-1-t;
             double next=t+dt;
+            check(next>t,"Step is too small to advance floating-point time");
             if(closed)psi=unitary(psi,big.H(t+.5*dt,c),dt,c.hbar);
             else if(sse){
                 double z;
@@ -212,13 +215,26 @@ inline double laguerre(int n,int a,double x){
     for(int k=1;k<n;++k){double next=((2*k+1+a-x)*v-(k+a)*old)/(k+1);old=v;v=next;}return v;
 }
 inline double wigner(const M& rho,double x,double p,double hbar){
-    double rr=(x*x+p*p)/hbar,value=0;C z=std::sqrt(2/hbar)*C(x,-p);
-    for(int n=0;n<rho.rows();++n){
-        double sign=n%2?-1:1;value+=rho(n,n).real()*sign*laguerre(n,0,2*rr);
-        C power=1;double ratio=1;
-        for(int m=n+1;m<rho.rows();++m){power*=z;ratio/=std::sqrt(double(m));
-            value+=2*std::real(rho(m,n)*power)*ratio*sign*laguerre(n,m-n,2*rr);}
+    double rr=(x*x+p*p)/hbar,value=0;
+    // Normalized associated-Laguerre recurrence with logarithmic scaling:
+    // avoids factorial/power overflow at the original basis sizes (~400).
+    for(int d=0;d<rho.rows();++d){
+        if(rr==0&&d>0)continue;
+        double logscale=-rr+(d?d*.5*std::log(2*rr):0)-.5*std::lgamma(d+1.);
+        C phase=std::polar(1.,d*std::atan2(-p,x));
+        double previous=0,current=1;
+        for(int n=0;n+d<rho.rows();++n){
+            double amplitude=current==0?0:std::copysign(std::exp(logscale+std::log(std::abs(current))),current);
+            value+=(d?2*std::real(rho(n+d,n)*phase):rho(n,n).real())*amplitude;
+            double denominator=std::sqrt(double((n+1)*(n+d+1)));
+            double next=-(2*n+1+d-2*rr)*current/denominator-
+                std::sqrt(double(n*(n+d)))*previous/denominator;
+            previous=current;current=next;
+            double scale=std::max(std::abs(previous),std::abs(current));
+            if(scale>1e100){previous*=1e-100;current*=1e-100;logscale+=100*std::log(10.);}
+            else if(scale>0&&scale<1e-100){previous*=1e100;current*=1e100;logscale-=100*std::log(10.);}
+        }
     }
-    return std::exp(-rr)*value/(pi*hbar);
+    check(std::isfinite(value),"Wigner recurrence failed");return value/(pi*hbar);
 }
 }

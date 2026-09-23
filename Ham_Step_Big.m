@@ -14,4 +14,3 @@ end
 %  Vectorised master-equation integrator using page-tensor algebra.
 %  Requires MATLAB R2020b+ for implicit-expansion / pagemtimes.
 %======================================================================
-

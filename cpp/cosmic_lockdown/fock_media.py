@@ -41,6 +41,29 @@ def analytic_wigner(rho, axis, hbar=1):
     radius = (xx ** 2 + pp ** 2) / hbar
     z = np.sqrt(2 / hbar) * (xx - 1j * pp)
     value = np.zeros_like(radius)
+    if len(rho) > 64:
+        # Scaled recurrence avoids overflow of z**k and factorial ratios.
+        # The small-basis path below remains an independent SciPy cross-check.
+        angle = np.arctan2(-pp, xx)
+        for d in range(len(rho)):
+            with np.errstate(divide='ignore'):
+                logscale = -radius + (d * .5 * np.log(2 * radius) if d else 0) - .5 * gammaln(d + 1)
+            phase = np.exp(1j * d * angle)
+            previous = np.zeros_like(radius); current = np.ones_like(radius)
+            for n in range(len(rho) - d):
+                with np.errstate(divide='ignore'):
+                    amplitude = np.sign(current) * np.exp(logscale + np.log(abs(current)))
+                value += (2 * (rho[n + d, n] * phase).real if d else rho[n, n].real) * amplitude
+                denominator = np.sqrt((n + 1) * (n + d + 1))
+                following = -(2 * n + 1 + d - 2 * radius) * current / denominator - np.sqrt(n * (n + d)) * previous / denominator
+                previous, current = current, following
+                scale = np.maximum(abs(previous), abs(current))
+                high = scale > 1e100; low = (scale > 0) & (scale < 1e-100)
+                previous[high] *= 1e-100; current[high] *= 1e-100; logscale[high] += 100 * np.log(10.)
+                previous[low] *= 1e100; current[low] *= 1e100; logscale[low] -= 100 * np.log(10.)
+        if not np.isfinite(value).all():
+            raise ArithmeticError('Wigner recurrence failed')
+        return value / (np.pi * hbar)
     for n in range(len(rho)):
         value += rho[n, n].real * (-1) ** n * eval_genlaguerre(n, 0, 2 * radius)
         for m in range(n + 1, len(rho)):

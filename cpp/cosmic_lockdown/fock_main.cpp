@@ -65,6 +65,10 @@ int selftest(){
     check(std::abs(r.trace()-C(1))<1e-12&&e.eigenvalues()(0)>-1e-12,"GKLS trace/positivity");
     M gaussian=M::Zero(3,3);gaussian(0,0)=1;
     check(std::abs(wigner(gaussian,.7,.2,1)-std::exp(-.53)/pi)<1e-14,"Gaussian Wigner");
+    M large=M::Zero(400,400);large(0,0)=1;
+    check(std::abs(wigner(large,10,10,1)-std::exp(-200.)/pi)<1e-95,"Large-basis Wigner overflow");
+    large.setZero();large(399,399)=1;
+    check(std::abs(wigner(large,0,0,1)+1/pi)<1e-12&&std::isfinite(wigner(large,28,0,1)),"High Fock Wigner normalization/scaling");
     V coherent(3);coherent<<1,I,0;coherent.normalize();double moment=0,integral=0,dx=.08;
     for(int i=-75;i<=75;++i)for(int j=-75;j<=75;++j){double w=wigner(density(coherent),i*dx,j*dx,1);integral+=w*dx*dx;moment+=j*dx*w*dx*dx;}
     check(std::abs(integral-1)<1e-10&&std::abs(moment-1/std::sqrt(2.))<1e-10,"Wigner sign and momentum marginal");

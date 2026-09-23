@@ -10,6 +10,8 @@ Run the retained numerical workflows without MATLAB using **[cpp/cosmic_lockdown
 
 Momentum-only and mixed X/P monitoring programs have been removed. Momentum in the Hamiltonian, phase-space coordinates and diagnostics remains. Mathematica notebooks remain as derivation material. See the [complete coverage and verification guide](docs/fock-port-coverage.md).
 
+The [recorded verification report](docs/verification-report.md) gives cross-language errors and larger-basis checks, including the remaining X³ stochastic timestep sensitivity.
+
 ## Corrected position-monitoring workflow
 
 `IndividualTrajectories_X.m`, `LindbladSweepsX.m`, `SSEDynamics_X_Sparse.m` and `Markov_LindbladX_ExpStep_1000.m` now use the position-monitoring equations of arXiv:2512.14204v2, Eqs. (2.7), (2.8), (3.14), (3.15), with hbar=1:
