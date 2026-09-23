@@ -26,7 +26,9 @@ See [machine-readable solver checks](verification/solver-accuracy.json) and [lar
 
 The CI pipeline builds and tests C++ on Windows and Linux, runs the independent reference/statistical suite, renders seven short media exports, then compares supplied-noise datasets against MATLAB R2025b. Required relative tolerances remain 1e-9 for operators/initial projectors and 1e-7 for short trajectories, allowing a global state phase. Strong X³ and adaptive-rejection cases are included. The [coverage map](fock-port-coverage.md) identifies the retained programs and helpers.
 
-Final cross-language results are recorded after the validation branch passes CI. The previous implementation's successful CI does not validate these replacements.
+All jobs passed for numerical/test commit `fa50dd2` in [GitHub Actions run 35822552411](https://github.com/rchristie95/CosmicLockdownMatlabAndMathematica/actions/runs/35822552411): Windows, Linux and MATLAB R2025b. There were 77 end-to-end workflow runs, seven media exports, and 22 MATLAB comparison datasets, plus the separate independent-reference and statistical accuracy suite.
+
+Maximum relative trajectory error was **3.71e-12**; maximum relative operator error was **1.27e-16**. The recorded [MATLAB parity table](verification/matlab-parity.csv) includes the strong X³ and adaptive-memory cases. The 1000-step MATLAB GKLS wrapper accumulated trace roundoff of 1.2e-12; its test uses a basis/step-scaled floating-point budget of 5.68e-11, with no trace repair. This report/data-only follow-up does not change the validated numerical code.
 
 ## Scope
 
