@@ -4,7 +4,7 @@ This note compares the X-monitoring workflow at commit `d382d97dca93768d08187b90
 
 ## Coefficients and time convention
 
-The paper fixes `volume=4 sqrt(2)` and includes inverse volume in the kinetic Hamiltonian term, volume in its potential term, and inverse volume in the decoherence rate. The historical X propagators omitted volume. They also used `Gamma=131 pi lambda^2 exp(6N)/(512 mu^5)` with the conventional dissipator `D[X]rho=-[X,[X,rho]]/2`. The paper instead requires denominator `256 mu^5 volume` in Gamma. Its noise amplitude is sqrt(Gamma), not Gamma. The corrected SSE and master equation share `PositionMonitoringCoefficients.m`.
+The paper fixes `volume=4 sqrt(2)` and includes inverse volume in the kinetic Hamiltonian term, volume in its potential term, and inverse volume in the decoherence rate. The historical X propagators omitted volume. They also used `Gamma=131 pi lambda^2 exp(6N)/(512 mu^5)` with the conventional dissipator `D[X]rho=-[X,[X,rho]]/2`. The paper instead requires denominator `256 mu^5 volume` in Gamma. Its noise amplitude is sqrt(Gamma), not Gamma. The corrected SSE and master equation now share `FockWorkflow.m`; `PositionMonitoringCoefficients.m` remains an independently tested coefficient helper.
 
 At the same numerical N and lambda, the old rate is `volume/2=2 sqrt(2)` times the paper's rate. At N=1, mu=.5, lambda=.05, the corrected Gamma is 9.1719798571 instead of 25.9422766154. Setting volume=1 alone does not recover the historical coefficient: the factor of two is a separate issue.
 
@@ -21,6 +21,8 @@ The characteristic crossover is `Nstar=log(1/(2 volume^2 mu^6))/6`, which equals
 
 ## Verification and limits
 
-The MATLAB tests exercise the actual small-matrix solver paths, coefficient identities, Gaussian-quadrature averaging of an SSE step, normalization, monitoring before N=-1, GKLS trace/positivity, and volume-dependent initial ground states. A test-only dense exponential supplies `expmv(A,v,t)` for matrices of size at most 64; production `expmv` implementations and large figure/video drivers are not exercised by those tests. The public CI workflow runs the tests in MATLAB R2025b.
+The MATLAB tests exercise the actual small-matrix solver paths, coefficient identities, Gaussian-quadrature averaging of an SSE step, normalization, monitoring before N=-1, GKLS trace/positivity, and volume-dependent initial ground states. The bundled production `expmv(A,v,t)` is exercised directly and compared against MATLAB dense `expm`. The old test-only shadow implementation has been removed. The public CI workflow runs the tests in MATLAB R2025b.
 
 The separate C++ solver has numerical self-tests and documented spatial/time refinements, but uses Fourier splitting instead of the MATLAB finite Fock basis. Changing the basis, integrator, RNG and coefficients means it does not reproduce old individual trajectories. Neither a localized example nor a pair of Wigner snapshots is a precision tunnelling-rate measurement. Original numerical figures and sweep convergence should be reassessed before attributing their quantitative values to the corrected equations.
+
+The later [Fock-port coverage guide](fock-port-coverage.md) documents the additional C++ Fock solver, retained higher-power/NM conventions, cross-language comparisons and remaining convergence limits.

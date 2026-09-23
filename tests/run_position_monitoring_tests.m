@@ -2,9 +2,6 @@ function run_position_monitoring_tests
 % Small-matrix regression tests; no figure, audio or large simulation is run.
 root = fileparts(fileparts(mfilename('fullpath')));
 addpath(root);
-support = fullfile(root,'tests','support');
-addpath(support,'-begin');
-cleanup = onCleanup(@() rmpath(support)); %#ok<NASGU>
 mu=.5; b3=.025; b4=.13; Hb=5; volume=4*sqrt(2); lambda=.05;
 
 % Factors of volume and two, and the N=0 crossover convention.

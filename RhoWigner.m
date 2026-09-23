@@ -30,7 +30,7 @@ p=p.';
 														
 x=ifftshift(x);
 W=zeros(Nx,Nx,N);
-WaitMessage = parfor_wait(N, 'Waitbar', true); %initialise progress bar
+% Console progress also works on headless CI / machines without a desktop.
 
 for n=1:N % requires parallel  computing toolbox much faster
 % for n=1:N
@@ -40,9 +40,8 @@ for n=1:N % requires parallel  computing toolbox much faster
     EX2 = ifft( (fft(V(:,m))*ones(1,Nx)).*exp( -1i*x*p.'/2/hbar ));					%   -ve shift
     W(:,:,n) = W(:,:,n)+real(D(m,m)*(1/2/pi/hbar)*fftshift(fft(fftshift(EX1.*conj(EX2), 2), [], 2), 2))';		%   Wigner function
     end
-    WaitMessage.Send % progress bar
+    fprintf('Density Wigner: %d/%d\n',n,N);
 
 end
-WaitMessage.Destroy %close progress bar
 
 end

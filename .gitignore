@@ -3,6 +3,7 @@ build/
 cpp/**/build/
 cpp_output/
 results/
+fock_output/
 *.exe
 *.o
 *.obj

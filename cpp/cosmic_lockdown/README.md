@@ -1,6 +1,12 @@
+# C++ solvers
+
+There are now two executables. `cosmic_fock` covers every retained numerical MATLAB workflow with the corresponding Fock-basis methods; see [coverage, commands and tests](../../docs/fock-port-coverage.md). CMake fetches its pinned Eigen dependency. Rendering/media uses `fock_media.py`.
+
+The following documents the unchanged Fourier solver, `cosmic_lockdown`.
+
 # Standalone C++ position-monitoring solver
 
-This folder contains all C++ source and its optional plotting scripts. No MATLAB, Eigen or FFTW is required. `main.cpp` computes the ground state, dynamics and Wigner transforms. Python only renders the resulting arrays.
+This folder contains all C++ source and its optional plotting scripts. The Fourier executable itself requires no MATLAB, Eigen or FFTW. `main.cpp` computes the ground state, dynamics and Wigner transforms. Python only renders the resulting arrays.
 
 ## Build and test
 

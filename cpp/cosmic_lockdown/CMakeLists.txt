@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
 project(cosmic_lockdown LANGUAGES CXX)
 add_executable(cosmic_lockdown main.cpp)
 target_compile_features(cosmic_lockdown PRIVATE cxx_std_17)
@@ -9,3 +12,20 @@ else()
 endif()
 enable_testing()
 add_test(NAME numerical_self_test COMMAND cosmic_lockdown --self-test)
+
+# Pinned header-only dependency for the MATLAB-compatible Fock workflows.
+include(FetchContent)
+FetchContent_Declare(eigen
+  URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+  URL_HASH SHA256=8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+  SOURCE_SUBDIR headers-only)
+FetchContent_MakeAvailable(eigen)
+add_executable(cosmic_fock fock_main.cpp)
+target_compile_features(cosmic_fock PRIVATE cxx_std_17)
+target_include_directories(cosmic_fock SYSTEM PRIVATE ${eigen_SOURCE_DIR})
+if(MSVC)
+  target_compile_options(cosmic_fock PRIVATE /O2 /W4 /bigobj)
+else()
+  target_compile_options(cosmic_fock PRIVATE -O2 -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME fock_self_test COMMAND cosmic_fock --self-test)
