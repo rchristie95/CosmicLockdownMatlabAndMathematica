@@ -949,7 +949,6 @@ close all;
 
 tic
 % [plotSpanLind, RhoLind,dNsLind] = Markov2Lindblads_Adaptive_Sparse_Dopri (PsiIn*PsiIn', Xhat, Phat, TSpan, hbar, mu,beta3, beta4, lambda, Hb,true);
-% [plotSpanLind, RhoLind] = Markov_2Lindblads_ExpStep_1000 ( TSpan,bSize, hbar, mu,beta3, beta4, lambda, Hb,true);
 [plotSpanLind, RhoLind] = Markov_LindbladX_ExpStep_1000 ( TSpan,bSize, hbar, mu,beta3, beta4, lambda, Hb,true,volume);
 
 timeLind=toc
