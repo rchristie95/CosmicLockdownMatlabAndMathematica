@@ -42,7 +42,7 @@ Defaults are mu=.5, beta3=.025, beta4=.13, H=5, lambda_on=.05, lambda_off=0, N=-
 
 ## Method and outputs
 
-The Fourier-grid ground state is obtained by inverse iteration. Symmetric splitting combines Hamiltonian exponentials and Gaussian measurement updates sampled from their Born law. This approaches the paper's real-noise normalized SSE in the continuous-step limit; it is an alternative to the MATLAB Euler/Fock method. `std::normal_distribution` streams can differ across C++ standard libraries.
+The Fourier-grid ground state is obtained by inverse iteration. Symmetric splitting combines Hamiltonian exponentials and Gaussian measurement updates sampled from their Born law. This approaches the paper's real-noise normalized SSE in the continuous-step limit; the Fock solver now uses the same exact-measurement principle with a Gaussian-mixture quantile sampler for cross-language noise replay. `std::normal_distribution` streams can differ across C++ standard libraries.
 
 - `states.csv`: field grid and complex off/on state coefficients, including sqrt(dx).
 - `history.csv`: active Gamma and false-side populations.

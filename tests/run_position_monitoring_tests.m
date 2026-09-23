@@ -22,27 +22,18 @@ for N=[-2,0,1]
     assert(abs(oldGamma/g-1)<1e-13);
 end
 
-% New-state normalization, including a deliberately unnormalized input.
-psi=[sqrt(.4);sqrt(.6)]; H=[.2,.3;.3,-.1]; L=diag([-1,1]);
-dt=.02; dW=.17;
-meanL=real(psi'*L*psi); centered=L-meanL*eye(2);
-expected=psi+(-1i*H*psi-.5*centered^2*psi)*dt+centered*psi*dW;
-expected=expected/norm(expected);
-actual=PositionMonitoringEulerStep(7*psi,dt,dW,H,L);
-assert(norm(actual-expected)<1e-13);
-assert(abs(norm(actual)-1)<1e-14);
-
-% Deterministic Gaussian quadrature of the stochastic update checks that
-% its ensemble has the required Lindblad rate, not twice/half that rate.
-nq=24; J=diag(sqrt(1:nq-1),1)+diag(sqrt(1:nq-1),-1);
-[Q,D]=eig(J); weights=Q(1,:).^2; nodes=diag(D);
-gamma=.7; L=sqrt(gamma)*diag([-1,1]); dt=1e-3; average=zeros(2);
+% Exact measurement: normalization and deterministic Gaussian quadrature
+% check the Born law and dephasing rate independently of time discretization.
+psi=[sqrt(.4);sqrt(.6)]; a=[-1;1]; q=.0007;
+p=GaussianMeasurementStep(7*psi,a,q,.17);
+assert(abs(norm(p)-1)<1e-14);
+nq=64; J=diag(sqrt(1:nq-1),1)+diag(sqrt(1:nq-1),-1);
+[Q,D]=eig(J); weights=Q(1,:).^2; nodes=diag(D); average=zeros(2);
 for j=1:nq
-    p=PositionMonitoringEulerStep(psi,dt,sqrt(dt)*nodes(j),zeros(2),L);
-    average=average+weights(j)*(p*p');
+    p=GaussianMeasurementStep(psi,a,q,nodes(j)); average=average+weights(j)*(p*p');
 end
-exact=psi*psi'; exact(1,2)=exact(1,2)*exp(-2*gamma*dt); exact(2,1)=exact(1,2);
-assert(norm(average-exact,'fro')<5e-6);
+exact=psi*psi'; exact(1,2)=exact(1,2)*exp(-2*q); exact(2,1)=exact(1,2);
+assert(norm(average-exact,'fro')<1e-12);
 
 % Actual GKLS solver: monitoring must be active BEFORE N=-1.
 span=[-1.501,-1.499]; bSize=4;

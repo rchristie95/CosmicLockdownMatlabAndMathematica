@@ -24,7 +24,9 @@ jobs:
           FOCK_BINARY: ${{ runner.os == 'Windows' && 'build/Release/cosmic_fock.exe' || 'build/cosmic_fock' }}
           MEDIA_FLAG: ${{ runner.os == 'Linux' && '--media' || '' }}
         shell: bash
-        run: python tests/test_fock_workflows.py "$FOCK_BINARY" $MEDIA_FLAG
+        run: |
+          python tests/test_fock_workflows.py "$FOCK_BINARY" $MEDIA_FLAG
+          python tests/test_solver_accuracy.py "$FOCK_BINARY"
       - if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:

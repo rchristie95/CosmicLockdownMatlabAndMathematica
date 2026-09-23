@@ -30,7 +30,7 @@ These corrections change numerical results relative to commit `d382d97`. See [th
 
 ## MATLAB prerequisites and tests
 
-The repository includes a sparse/matrix-free exponential-action implementation with convention `expmv(A,v,t) = exp(t*A)*v`. Numerical MATLAB workflows share `FockWorkflow.m`; the original function signatures remain available. Figure/video/audio drivers retain their graphics and ffmpeg requirements. Fresh stochastic runs may end in either vacuum.
+The production solvers use cached spectral propagation, exact Gaussian measurement/dephasing, and adaptive rank-factorized memory integration; no external exponential-action package is required. Numerical MATLAB workflows share `FockWorkflow.m`; the original function signatures remain available. Figure/video/audio drivers retain their graphics and ffmpeg requirements. Fresh stochastic runs may end in either vacuum.
 
 Run the small numerical regression tests from the repository root:
 
@@ -40,4 +40,4 @@ run_position_monitoring_tests;
 run_fock_port_tests; % after the Python verification suite generates C++ fixtures
 ```
 
-GitHub Actions builds and tests C++ on Linux and Windows, generates numerical reference data, and compares it to MATLAB R2025b. Tests cover every numerical workflow, common supplied noise, operators, ground states, exponential action, model coefficients, crossover, Wigner normalization, switching, and nonuniform memory integration. Linux also renders short videos with audio. Small-basis parity and short-run refinements do not establish convergence of full paper-scale figures; inspect the generated refinement report before choosing production settings.
+GitHub Actions builds and tests C++ on Linux and Windows, generates numerical reference data, and compares it to MATLAB R2025b. Tests cover every numerical workflow, common supplied noise, operators, ground states, independent time-dependent references, model coefficients, crossover, Wigner normalization, switching, and nonuniform memory integration. Linux also renders short videos with audio. Small-basis parity and short-run refinements do not establish convergence of full paper-scale figures; inspect the generated refinement report before choosing production settings.

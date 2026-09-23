@@ -13,7 +13,7 @@ The characteristic crossover is `Nstar=log(1/(2 volume^2 mu^6))/6`, which equals
 ## MATLAB implementation changes
 
 - Both X solvers now include monitoring from the supplied initial time; the undocumented N=-1 cutoff is removed.
-- The SSE Euler update normalizes the new vector, rather than dividing by the previous norm, and evaluates normalized expectation values. Its Hermitian-channel drift is computed with matrix-vector products.
+- The SSE now uses exact Gaussian measurement and spectral unitary substeps. This supersedes the earlier Euler normalization repair; the Euler helper has been removed.
 - The GKLS solver propagates its density matrix in the chosen storage basis throughout, including early times. Its initial state is still prepared in the larger basis and projected. This replaces the old early-time unitary propagation in a different basis; production basis convergence must therefore be rechecked.
 - X drivers pass the paper volume through ground-state preparation, closed evolution, SSE/GKLS evolution, energy diagnostics, contours and sonification. The diagnostic/sonification Hamiltonian's erroneous factor of one half on V is corrected.
 - Both commented-out SSE calls are restored. Fresh random runs can finish on either side; they are not guaranteed to reproduce the old true/false examples.
@@ -21,7 +21,7 @@ The characteristic crossover is `Nstar=log(1/(2 volume^2 mu^6))/6`, which equals
 
 ## Verification and limits
 
-The MATLAB tests exercise the actual small-matrix solver paths, coefficient identities, Gaussian-quadrature averaging of an SSE step, normalization, monitoring before N=-1, GKLS trace/positivity, and volume-dependent initial ground states. The bundled production `expmv(A,v,t)` is exercised directly and compared against MATLAB dense `expm`. The old test-only shadow implementation has been removed. The public CI workflow runs the tests in MATLAB R2025b.
+The MATLAB tests exercise the actual small-matrix solver paths, coefficient identities, Gaussian-quadrature averaging of an SSE step, normalization, monitoring before N=-1, GKLS trace/positivity, and volume-dependent initial ground states. The spectral propagators are checked against independent integration of the full time-dependent generator. The temporary production `expmv` implementation and unused Hamiltonian helper have been removed. The public CI workflow runs the tests in MATLAB R2025b.
 
 The separate C++ solver has numerical self-tests and documented spatial/time refinements, but uses Fourier splitting instead of the MATLAB finite Fock basis. Changing the basis, integrator, RNG and coefficients means it does not reproduce old individual trajectories. Neither a localized example nor a pair of Wigner snapshots is a precision tunnelling-rate measurement. Original numerical figures and sweep convergence should be reassessed before attributing their quantitative values to the corrected equations.
 

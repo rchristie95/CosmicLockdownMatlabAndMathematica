@@ -1,0 +1,78 @@
+{
+  "gkls-x": {
+    "reference": "DOP853 full generator",
+    "errors": [
+      4.8044162551055355e-05,
+      1.3528131731911019e-05,
+      3.509368447421932e-06
+    ]
+  },
+  "gkls-x2": {
+    "reference": "DOP853 full generator",
+    "errors": [
+      5.768257158925535e-05,
+      1.444895319118409e-05,
+      3.614022368865503e-06
+    ]
+  },
+  "gkls-x3": {
+    "reference": "DOP853 full generator",
+    "errors": [
+      3.5664313976860695e-05,
+      1.0216147662648334e-05,
+      2.667376959500675e-06
+    ]
+  },
+  "closed": {
+    "reference": "DOP853 full 3b Hamiltonian",
+    "errors": [
+      2.4090524004675906e-11,
+      1.5043159577865903e-12,
+      9.728819574924575e-14
+    ]
+  },
+  "sse-x": {
+    "paths": 24,
+    "reference_step": 0.000125,
+    "rms_density_errors": [
+      3.458649976643421e-07,
+      2.2786060432032695e-07,
+      7.449151597766794e-08
+    ]
+  },
+  "sse-x2": {
+    "paths": 24,
+    "reference_step": 0.000125,
+    "rms_density_errors": [
+      1.3831595718206339e-05,
+      8.524178815870705e-06,
+      2.6693817477661373e-06
+    ]
+  },
+  "sse-x3": {
+    "paths": 24,
+    "reference_step": 0.000125,
+    "rms_density_errors": [
+      0.10342538291534965,
+      0.08551707638403136,
+      0.02441318914763512
+    ]
+  },
+  "nm-density": {
+    "reference_error": 1.5835976420574778e-11,
+    "full_history_quadrature_error": 3.737325319078158e-16,
+    "accepted": 8,
+    "rejected": 1
+  },
+  "nm-sse": {
+    "reference_error": 7.578473822569716e-12,
+    "accepted": 11,
+    "rejected": 1
+  },
+  "zero-nm-sse": {
+    "unitary_reference_error": 2.0260437774926518e-10
+  },
+  "zero-nm-density": {
+    "unitary_reference_error": 2.029164509602128e-10
+  }
+}

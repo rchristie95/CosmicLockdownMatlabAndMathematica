@@ -26,6 +26,7 @@ struct Config {
     unsigned long long seed=20260928;
     std::vector<double> times,noise,steps;
     std::vector<C> zeta;
+    double rtol=1e-9,atol=1e-11;
     bool wigner=true;
     int power()const{return model=="x2"?2:model=="x3"?3:1;}
     bool nm()const{return workflow.rfind("nm-",0)==0;}
@@ -58,47 +59,92 @@ inline V ground(const M& h){
     V v=e.eigenvectors().col(0);Eigen::Index j;v.cwiseAbs().maxCoeff(&j);
     v*=std::conj(v(j))/std::abs(v(j));return v;
 }
-inline double bound(const M& m){return m.cwiseAbs().colwise().sum().maxCoeff();}
-// Scaled Taylor exponential action. No dense n^2-by-n^2 Liouvillian is formed.
-inline M exp_action(const std::function<M(const M&)>& apply,const M& v,double dt,double norm_bound){
-    const double count=std::ceil(std::abs(dt)*norm_bound/.5);
-    check(std::isfinite(count)&&count<1e7,"Exponential action exceeds work limit; reduce step/basis");
-    int pieces=std::max(1,int(count));double h=dt/pieces;M out=v;
-    for(int s=0;s<pieces;++s){
-        M sum=out,term=out;bool converged=false;
-        for(int k=1;k<=48;++k){
-            term=(h/k)*apply(term);sum+=term;
-            if(term.norm()<=2e-15*std::max(sum.norm(),1e-300)){converged=true;break;}
-        }
-        check(converged&&sum.allFinite(),"Exponential action did not converge");out=std::move(sum);
+// Exact Gaussian instrument for a Hermitian observable in its eigenbasis.
+// A single normal quantile samples the Born-weighted Gaussian mixture. This
+// retains a scalar innovation for externally supplied/coupled noise paths.
+inline V measurement(V v,const R& a,double q,double z){
+    if(q==0)return v;
+    check(q>0&&std::isfinite(q)&&std::isfinite(z),"Invalid measurement clock/noise");
+    R weights=v.cwiseAbs2();weights/=weights.sum();
+    R centers=2*std::sqrt(q)*a;
+    double lo=z+centers.minCoeff(),hi=z+centers.maxCoeff();
+    // Survival probabilities avoid cancellation for positive normal quantiles.
+    bool upper=z>0;double target=.5*std::erfc((upper?z:-z)/std::sqrt(2.));
+    for(int k=0;k<80;++k){
+        double mid=.5*lo+.5*hi,total=0;
+        for(int j=0;j<a.size();++j)total+=weights(j)*.5*std::erfc((upper?mid-centers(j):centers(j)-mid)/std::sqrt(2.));
+        if((upper&&total>target)||(!upper&&total<target))lo=mid;else hi=mid;
+        if(hi-lo<8*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(mid)))break;
     }
-    return out;
+    double y=std::sqrt(q)*(.5*lo+.5*hi);
+    R logs(a.size());double peak=-std::numeric_limits<double>::infinity();
+    for(int j=0;j<a.size();++j){logs(j)=std::abs(v(j))>0?std::log(std::abs(v(j)))+a(j)*y-q*a(j)*a(j):-std::numeric_limits<double>::infinity();peak=std::max(peak,logs(j));}
+    for(int j=0;j<a.size();++j)v(j)=std::abs(v(j))>0?v(j)/std::abs(v(j))*std::exp(logs(j)-peak):C(0);
+    return normalized(v);
 }
-inline V unitary(const V& psi,const M& h,double dt,double hbar){
-    return normalized(exp_action([&](const M& a)->M{return (-I/hbar)*(h*a);},psi,dt,bound(h)/hbar));
-}
-inline M gkls(const M& rho,const M& h,const M& l,double dt,double hbar){
-    M l2=l.adjoint()*l;
-    auto apply=[&](const M& r)->M{return (-I/hbar)*comm(h,r)+(l*r*l.adjoint()-.5*(l2*r+r*l2))/hbar;};
-    M r=exp_action(apply,rho,dt,(2*bound(h)+2*bound(l)*bound(l))/hbar);
-    check(r.allFinite()&&r.trace().real()>0,"Invalid GKLS density");return r/r.trace().real();
-}
-inline V diffusion(const V& v,const M& l,double hbar){
-    // The normalized expectation extends the SSE to intermediate SRK stages.
-    double mean=(v.dot(l*v)).real()/v.squaredNorm();return (l*v-mean*v)/std::sqrt(hbar);
-}
-inline V drift(const V& v,const M& h,const M& l,double hbar){
-    double mean=(v.dot(l*v)).real()/v.squaredNorm();V w=l*v-mean*v;
-    return (-I/hbar)*(h*v)-.5/hbar*(l*w-mean*w);
-}
-inline V sse_step(const V& in,const M& h0,const M& h1,const M& l0,const M& l1,
-                  double dt,double dw,double hbar,int power){
-    V v=normalized(in),f=drift(v,h0,l0,hbar),g=diffusion(v,l0,hbar);
-    if(power!=2)return normalized(v+dt*f+dw*g);
-    double sq=std::sqrt(dt),i11=.5*(dw*dw-dt);
-    V pred=v+dt*f,shift=g*(i11/sq);
-    return normalized(v+.5*dt*(f+drift(pred,h1,l1,hbar))+dw*g+
-        .5*sq*(diffusion(v+shift,l1,hbar)-diffusion(v-shift,l1,hbar)));
+// Cached spectral Strang flow: kinetic energy, commuting potential/measurement,
+// kinetic energy. Every factor is unitary or a completely positive instrument.
+struct Spectral {
+    M ux,up;R x,p2,potential,a;
+    Spectral(const Ops& o,const Config& c){
+        Eigen::SelfAdjointEigenSolver<M> ex(o.x),ep(o.p2);
+        check(ex.info()==Eigen::Success&&ep.info()==Eigen::Success,"Spectral decomposition failed");
+        ux=ex.eigenvectors();up=ep.eigenvectors();x=ex.eigenvalues();p2=ep.eigenvalues();
+        potential=(-c.mu*c.mu*x.array().square()/2+2*c.beta3*c.mu*x.array().cube()/3+
+            (c.beta4*c.beta4-c.beta3*c.beta3)*x.array().pow(4)/4).matrix();
+        a=x.array().pow(c.power()).matrix();
+    }
+    static V phase(const R& values,double clock){return (-I*clock*values.cast<C>().array()).exp().matrix();}
+    V kinetic(const V& v,double clock)const{return up*(phase(p2,clock).array()*(up.adjoint()*v).array()).matrix();}
+    M kinetic_density(const M& r,double clock)const{
+        V d=phase(p2,clock);M z=up.adjoint()*r*up;z=d.asDiagonal()*z*d.conjugate().asDiagonal();return up*z*up.adjoint();
+    }
+    V state(const V& v,double t,double dt,const Config& c,double q=0,double z=0)const{
+        double kt=std::exp(-3*t)*(-std::expm1(-3*dt))/(6*c.H*c.vol()*c.hbar);
+        double vt=std::exp(3*t)*std::expm1(3*dt)*c.vol()/(3*c.H*c.hbar);
+        V u=ux.adjoint()*kinetic(v,.5*kt);
+        if(q>0)u=measurement(u,a,q,z);
+        u.array()*=phase(potential,vt).array();return kinetic(V(ux*u),.5*kt);
+    }
+    V closed(V v,double t,double dt,const Config& c)const{
+        // Fourth-order symmetric composition; negative substeps only for unitary evolution.
+        const double w=1/(2-std::cbrt(2.));
+        for(double coefficient:{w,1-2*w,w}){double h=coefficient*dt;v=state(v,t,h,c);t+=h;}return v;
+    }
+    M channel(const M& r,double t,double dt,const Config& c,double q)const{
+        double kt=std::exp(-3*t)*(-std::expm1(-3*dt))/(6*c.H*c.vol()*c.hbar);
+        double vt=std::exp(3*t)*std::expm1(3*dt)*c.vol()/(3*c.H*c.hbar);
+        M u=ux.adjoint()*kinetic_density(r,.5*kt)*ux;
+        for(int j=0;j<u.cols();++j)for(int i=0;i<u.rows();++i)
+            u(i,j)*=std::exp(-I*vt*(potential(i)-potential(j))-.5*q*std::pow(a(i)-a(j),2));
+        return kinetic_density(M(ux*u*ux.adjoint()),.5*kt);
+    }
+};
+struct AdaptiveStats {unsigned long long accepted=0,rejected=0;};
+// Dormand-Prince 5(4), with a componentwise weighted RMS error. Only smooth
+// coloured-noise augmented ODEs use adaptivity; never reject white-noise steps.
+inline M adaptive(const std::function<M(double,const M&)>& rhs,M y,double t,double end,
+                  double maxstep,double rtol,double atol,AdaptiveStats& stats){
+    double step=std::min(maxstep,end-t);unsigned work=0;
+    while(t<end){
+        check(++work<1000000,"Adaptive integration work limit exceeded");
+        double h=std::min(step,end-t);check(t+h>t,"Adaptive step underflow");
+        M k1=rhs(t,y),k2=rhs(t+h/5,y+h*k1/5);
+        M k3=rhs(t+3*h/10,y+h*(3*k1/40+9*k2/40));
+        M k4=rhs(t+4*h/5,y+h*(44*k1/45-56*k2/15+32*k3/9));
+        M k5=rhs(t+8*h/9,y+h*(19372*k1/6561-25360*k2/2187+64448*k3/6561-212*k4/729));
+        M k6=rhs(t+h,y+h*(9017*k1/3168-355*k2/33+46732*k3/5247+49*k4/176-5103*k5/18656));
+        M next=y+h*(35*k1/384+500*k3/1113+125*k4/192-2187*k5/6784+11*k6/84);
+        M k7=rhs(t+h,next);
+        M error=h*((35./384-5179./57600)*k1+(500./1113-7571./16695)*k3+
+            (125./192-393./640)*k4+(-2187./6784+92097./339200)*k5+(11./84-187./2100)*k6-k7/40);
+        double err=0;
+        for(int j=0;j<y.size();++j){double scale=atol+rtol*std::max(std::abs(y(j)),std::abs(next(j)));err+=std::norm(error(j)/scale);}
+        err=std::sqrt(err/y.size());check(std::isfinite(err)&&next.allFinite(),"Non-finite adaptive state");
+        if(err<=1){y=std::move(next);t+=h;++stats.accepted;}else ++stats.rejected;
+        step=std::min(maxstep,h*(err==0?5:std::clamp(.9*std::pow(err,-.2),.2,5.)));
+    }
+    return y;
 }
 inline R bath(double t,const Config& c){
     double d=128*std::pow(c.H*c.omega,3);R v(4);
@@ -106,22 +152,22 @@ inline R bath(double t,const Config& c){
        std::sqrt(3/d)*std::cos(3*c.omega*t),std::sqrt(3/d)*std::sin(3*c.omega*t);return v;
 }
 struct Snapshot {double t;V psi;M rho;};
-struct Result {std::vector<Snapshot> frames;std::vector<double> noise;std::vector<C> zeta;double residual=0;};
+struct Result {std::vector<Snapshot> frames;std::vector<double> noise;std::vector<C> zeta;double residual=0;AdaptiveStats stats;};
 inline Result solve(Config c){
     check(c.basis>=2&&c.basis<=512&&c.step>0&&c.final>=c.initial&&c.H>0&&c.hbar>0&&c.mu>0&&
-          c.lambda>=0&&c.omega>0&&c.volume>=0&&c.vol()>0,"Invalid physical/numerical parameters");
-    for(double v:{c.hbar,c.mu,c.beta3,c.beta4,c.lambda,c.H,c.initial,c.final,c.step,c.volume,c.omega})
+          c.rtol>0&&c.atol>0&&c.lambda>=0&&c.omega>0&&c.volume>=0&&c.vol()>0,"Invalid physical/numerical parameters");
+    for(double v:{c.hbar,c.mu,c.beta3,c.beta4,c.lambda,c.H,c.initial,c.final,c.step,c.volume,c.omega,c.rtol,c.atol})
         check(std::isfinite(v),"Non-finite parameter");
     check(c.model=="x"||c.model=="x2"||c.model=="x3","Unknown model");
     check(!(c.model=="x"&&(c.workflow=="sse"||c.workflow=="lindblad"))||c.hbar==1,"Paper X model requires hbar=1");
     bool sse=c.workflow=="sse",lind=c.workflow=="lindblad",closed=c.workflow=="closed";
     bool adi=c.workflow=="adiabatic",nms=c.workflow=="nm-sse";
-    bool nmd=c.workflow=="nm-density"||c.workflow=="nm-density-full";
+    bool nmd=c.workflow=="nm-density";
     check(sse||lind||closed||adi||nms||nmd,"Unknown workflow");
     check(!c.nm()||c.model=="x","Non-Markovian workflows use X coupling");
     int multiplier=(sse||adi||c.nm())?2:3;
     Ops small(c.basis,c),big(multiplier*c.basis,c);M h0=big.H(c.initial,c);
-    V psi=ground(h0);Result out;
+    V psi=ground(h0);Result out; Spectral sb(big,c),ss(small,c);
     double e=(psi.dot(h0*psi)).real();out.residual=(h0*psi-e*psi).norm()/std::max(1.,h0.norm());
     M rho=density(normalized(V(psi.head(c.basis))));
     std::mt19937_64 rng(c.seed);std::normal_distribution<double> normal;
@@ -136,8 +182,8 @@ inline Result solve(Config c){
     check(!times.empty()&&std::abs(times.front()-c.initial)<1e-12&&std::abs(times.back()-c.final)<1e-12,"Output times must include both endpoints");
     for(size_t k=1;k<times.size();++k)check(times[k]>times[k-1],"Output times must increase");
     check(c.steps.empty()||c.steps.size()==times.size()-1,"Need one maximum step per output interval");
-    M aux=M::Zero(c.basis,4);std::vector<M> accum(4,M::Zero(c.basis,c.basis)),hist;
-    std::vector<R> history_weights;bool started=false;size_t ni=0;
+    M aux=M::Zero(c.basis,4),memory=M::Zero(c.basis,5*c.basis);
+    bool started=false;size_t ni=0;
     auto store=[&](double t){
         V p;M r;
         if(adi){p=normalized(V(ground(big.H(t,c)).head(c.basis)));r=density(p);}
@@ -151,56 +197,50 @@ inline Result solve(Config c){
         while(!adi&&t<times[frame]-1e-13){
             double maxstep=c.steps.empty()?c.step:c.steps[frame-1];
             check(maxstep>0&&std::isfinite(maxstep),"Invalid interval step");
-            double dt=std::min(maxstep,times[frame]-t);
+            double dt=(nmd||(nms&&t>=-1))?times[frame]-t:std::min(maxstep,times[frame]-t);
             bool switched_model=(sse||lind)&&c.power()!=1;
             if((switched_model||nms)&&t<-1&&t+dt>-1)dt=-1-t;
             double next=t+dt;
             check(next>t,"Step is too small to advance floating-point time");
-            if(closed)psi=unitary(psi,big.H(t+.5*dt,c),dt,c.hbar);
+            if(closed)psi=sb.closed(psi,t,dt,c);
             else if(sse){
                 double z;
                 if(c.noise.empty())z=normal(rng);else{check(ni<c.noise.size(),"Noise file too short");z=c.noise[ni];}
                 ++ni;out.noise.push_back(z);
-                if(c.lambda==0||(c.power()!=1&&t<-1))psi=unitary(psi,big.H(t,c),dt,c.hbar);
-                else psi=sse_step(psi,big.H(t,c),big.H(next,c),std::sqrt(c.rate(t))*big.coupling,
-                    std::sqrt(c.rate(next))*big.coupling,dt,std::sqrt(dt)*z,c.hbar,c.power());
+                double q=(c.power()!=1&&t<-1)?0:c.rate(t)*std::expm1(6*dt)/(6*c.hbar);
+                psi=sb.state(psi,t,dt,c,q,z);
             }else if(lind){
-                if(c.power()!=1&&t<-1){psi=unitary(psi,big.H(t+.5*dt,c),dt,c.hbar);rho=density(normalized(V(psi.head(c.basis))));}
-                else rho=gkls(rho,small.H(t+.5*dt,c),std::sqrt(c.rate(t+.5*dt))*small.coupling,dt,c.hbar);
+                if(c.power()!=1&&t<-1){psi=sb.closed(psi,t,dt,c);rho=density(normalized(V(psi.head(c.basis))));}
+                else rho=ss.channel(rho,t,dt,c,c.rate(t)*std::expm1(6*dt)/(6*c.hbar));
             }else if(nms){
-                if(t<-1){psi=unitary(psi,big.H(t,c),dt,c.hbar);}
+                if(t<-1){psi=sb.closed(psi,t,dt,c);}
                 else{
-                    if(!started){
-                        psi=normalized(V(psi.head(c.basis)));M l=(c.lambda/c.H)*std::exp(3*t)*small.x;
-                        double mean=(psi.dot(l*psi)).real();V f=(l*psi-mean*psi)*dt;
-                        aux=f*bath(t,c).cast<C>().transpose();started=true;
-                    }
-                    M ln=(c.lambda/c.H)*std::exp(3*t)*small.x,le=(c.lambda/c.H)*std::exp(3*next)*small.x;
-                    R row=bath(next,c);C eta=0;for(int j=0;j<4;++j)eta+=row(j)*c.zeta[j];
-                    double mean=(psi.dot(ln*psi)).real();M centered=ln-mean*M::Identity(c.basis,c.basis);
-                    M dn=(-I/c.hbar)*small.H(t,c)+std::conj(eta)*centered;
-                    V drift0=dn*psi-centered*(aux*row.cast<C>());
-                    V pred=normalized(psi+dt*drift0);M auxp=aux+dt*(dn*aux);
-                    double mp=(pred.dot(le*pred)).real();M ce=le-mp*M::Identity(c.basis,c.basis);
-                    M de=(-I/c.hbar)*small.H(next,c)+std::conj(eta)*ce;
-                    V drift1=de*pred-ce*(auxp*row.cast<C>());
-                    psi=normalized(psi+.5*dt*(drift0+drift1));
-                    M homogeneous=aux+.5*dt*(dn*aux+de*auxp);
-                    double me=(psi.dot(le*psi)).real();V f=(le*psi-me*psi)*dt;
-                    aux=homogeneous+f*row.cast<C>().transpose();
+                    if(!started){psi=normalized(V(psi.head(c.basis)));started=true;}
+                    M state(c.basis,5);state.col(0)=psi;state.rightCols(4)=aux;
+                    auto rhs=[&](double u,const M& y)->M{
+                        V p=y.col(0);R row=bath(u,c);C eta=0;for(int j=0;j<4;++j)eta+=row(j)*c.zeta[j];
+                        M l=(c.lambda/c.H)*std::exp(3*u)*small.x;
+                        double mean=(p.dot(l*p)).real()/p.squaredNorm();M centered=l-mean*M::Identity(c.basis,c.basis);
+                        M d=(-I/c.hbar)*small.H(u,c)+std::conj(eta)*centered;
+                        V f=d*p-centered*(y.rightCols(4)*row.cast<C>());
+                        // Continuous normalized gauge; no finite-step norm repair.
+                        f-=p*(p.dot(f).real()/p.squaredNorm());
+                        M dy(c.basis,5);dy.col(0)=f;dy.rightCols(4)=d*y.rightCols(4)+(centered*p)*row.transpose();return dy;
+                    };
+                    state=adaptive(rhs,state,t,next,maxstep,c.rtol,c.atol,out.stats);
+                    psi=state.col(0);aux=state.rightCols(4);
                 }
             }else if(nmd){
-                M ln=(c.lambda/c.H)*std::exp(3*t)*small.x,lm=(c.lambda/c.H)*std::exp(3*(t+.5*dt))*small.x;
-                M k=comm(ln,rho),sum=M::Zero(c.basis,c.basis);R past=bath(t,c),row=bath(next,c);
-                if(c.workflow=="nm-density-full"){
-                    hist.push_back(dt*k);history_weights.push_back(past);
-                    for(size_t j=0;j<hist.size();++j)sum+=row.dot(history_weights[j])*hist[j];
-                }else for(int j=0;j<4;++j){accum[j]+=dt*past(j)*k;sum+=row(j)*accum[j];}
-                M d0=(-I/c.hbar)*comm(small.H(t,c),rho)-comm(ln,sum);
-                M half=rho+.5*dt*d0;
-                rho+=dt*((-I/c.hbar)*comm(small.H(t+.5*dt,c),half)-comm(lm,sum));
-                rho=(.5*(rho+rho.adjoint())).eval();check(std::abs(rho.trace())>1e-15,"Invalid memory density trace");rho/=rho.trace();
+                memory.leftCols(c.basis)=rho;
+                auto rhs=[&](double u,const M& y)->M{
+                    M l=(c.lambda/c.H)*std::exp(3*u)*small.x;R row=bath(u,c);
+                    M r=y.leftCols(c.basis),k=comm(l,r),sum=M::Zero(c.basis,c.basis),dy(y.rows(),y.cols());
+                    for(int j=0;j<4;++j){sum+=row(j)*y.middleCols((j+1)*c.basis,c.basis);dy.middleCols((j+1)*c.basis,c.basis)=row(j)*k;}
+                    dy.leftCols(c.basis)=(-I/c.hbar)*comm(small.H(u,c),r)-comm(l,sum);return dy;
+                };
+                memory=adaptive(rhs,memory,t,next,maxstep,c.rtol,c.atol,out.stats);rho=memory.leftCols(c.basis);
             }
+
             t=next;
         }
         t=times[frame];store(t);
@@ -209,11 +249,6 @@ inline Result solve(Config c){
     return out;
 }
 // Analytic harmonic-oscillator Wigner basis, retaining negative eigenvalues.
-inline double laguerre(int n,int a,double x){
-    if(n==0)return 1;
-    double old=1,v=1+a-x;
-    for(int k=1;k<n;++k){double next=((2*k+1+a-x)*v-(k+a)*old)/(k+1);old=v;v=next;}return v;
-}
 inline double wigner(const M& rho,double x,double p,double hbar){
     double rr=(x*x+p*p)/hbar,value=0;
     // Normalized associated-Laguerre recurrence with logarithmic scaling:

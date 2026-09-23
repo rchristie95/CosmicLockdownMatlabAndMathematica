@@ -38,7 +38,11 @@ void save(const Config& c,const Result& r,const fs::path& out){
         <<"\"basis\":"<<c.basis<<",\"frames\":"<<r.frames.size()<<",\"has_psi\":"<<(r.frames[0].psi.size()?"true":"false")<<",\n"
         <<"\"hbar\":"<<c.hbar<<",\"mu\":"<<c.mu<<",\"beta3\":"<<c.beta3<<",\"beta4\":"<<c.beta4<<",\"lambda\":"<<c.lambda<<",\"H\":"<<c.H<<",\"volume\":"<<c.vol()<<",\"omega\":"<<c.omega<<",\n"
         <<"\"initial\":"<<c.initial<<",\"final\":"<<c.final<<",\"step\":"<<c.step<<",\"seed\":"<<c.seed<<",\"grid\":"<<c.grid<<",\"extent\":"<<c.extent<<",\n"
+        <<"\"rtol\":"<<c.rtol<<",\"atol\":"<<c.atol<<",\"accepted_steps\":"<<r.stats.accepted<<",\"rejected_steps\":"<<r.stats.rejected<<",\n"
+        <<"\"integrator\":\""<<(c.workflow=="sse"?"Gaussian instrument / spectral Strang":c.workflow=="lindblad"?"CPTP spectral Strang":c.nm()?"rank-factorized Dormand-Prince 5(4)":c.workflow=="closed"?"fourth-order spectral composition":"Hermitian eigensolver")<<"\",\n"
         <<"\"ground_relative_residual\":"<<r.residual<<",\"wigner_exported\":"<<(c.wigner?"true":"false")<<",\n"
+        <<"\"noise_convention\":\"one standard normal quantile per Gaussian Born-mixture measurement step; q=integral Gamma/hbar dN\",\n"
+        <<"\"memory_initialization\":\"zero at model activation; adaptive continuous memory integral\",\n"
         <<"\"encoding\":\"native-endian float64 (supported CI hosts little-endian); complex real/imag pairs; Fock matrices column-major within each frame\",\n"
         <<"\"monitoring_start\":"<<((c.nm()&&c.workflow=="nm-sse")||(!c.nm()&&c.power()!=1)?std::max(-1.,c.initial):c.initial)<<",\n"
         <<"\"N_crossover\":"<<std::log(1/(2*c.vol()*c.vol()*std::pow(c.mu,6)))/6<<",\n"
@@ -60,8 +64,8 @@ int selftest(){
     Config c;c.basis=6;c.initial=-.2;c.final=-.19;c.step=.001;c.frames=3;c.wigner=false;
     Ops o(6,c);check((o.x-o.x.adjoint()).norm()<1e-14,"X Hermiticity");
     V p=ground(o.H(0,c));check((o.H(0,c)*p-p*(p.dot(o.H(0,c)*p))).norm()<1e-12,"Eigen residual");
-    V q=unitary(p,o.H(.2,c),.01,1);check(std::abs(q.norm()-1)<1e-14,"Unitary norm");
-    M r=gkls(density(p),o.H(.2,c),.2*o.x,.1,1);Eigen::SelfAdjointEigenSolver<M> e(r);
+    Spectral spectral(o,c);V q=spectral.closed(p,.2,.01,c);check(std::abs(q.norm()-1)<1e-14,"Unitary norm");
+    M r=spectral.channel(density(p),.2,.1,c,.004);Eigen::SelfAdjointEigenSolver<M> e(r);
     check(std::abs(r.trace()-C(1))<1e-12&&e.eigenvalues()(0)>-1e-12,"GKLS trace/positivity");
     M gaussian=M::Zero(3,3);gaussian(0,0)=1;
     check(std::abs(wigner(gaussian,.7,.2,1)-std::exp(-.53)/pi)<1e-14,"Gaussian Wigner");
@@ -73,13 +77,13 @@ int selftest(){
     for(int i=-75;i<=75;++i)for(int j=-75;j<=75;++j){double w=wigner(density(coherent),i*dx,j*dx,1);integral+=w*dx*dx;moment+=j*dx*w*dx*dx;}
     check(std::abs(integral-1)<1e-10&&std::abs(moment-1/std::sqrt(2.))<1e-10,"Wigner sign and momentum marginal");
     for(std::string model:{"x","x2","x3"})for(std::string wf:{"adiabatic","closed","sse","lindblad"}){c.model=model;c.workflow=wf;auto result=solve(c);check(result.frames.back().rho.allFinite(),"Workflow finite");}
-    c.model="x";c.workflow="nm-density";auto a=solve(c);c.workflow="nm-density-full";auto b=solve(c);
-    check((a.frames.back().rho-b.frames.back().rho).norm()<1e-12,"Memory contraction parity");
+    c.model="x";c.workflow="nm-density";auto a=solve(c);c.rtol=1e-11;c.atol=1e-13;auto b=solve(c);
+    check((a.frames.back().rho-b.frames.back().rho).norm()<1e-8,"Memory tolerance refinement");
     c.workflow="nm-sse";solve(c);
     // Nonzero-coupling ensemble against an independent exact two-state channel.
     M l=M::Zero(2,2),h=M::Zero(2,2);l(0,0)=-1;l(1,1)=1;V v(2);v<<std::sqrt(.4),std::sqrt(.6);
     std::mt19937_64 rng(91);std::normal_distribution<double> normal;M avg=M::Zero(2,2);double dt=1e-4;
-    for(int k=0;k<40000;++k){V z=sse_step(v,h,h,l,l,dt,std::sqrt(dt)*normal(rng),1,1);avg+=density(z)/40000.;}
+    for(int k=0;k<40000;++k){V z=measurement(v,l.diagonal().real(),dt,normal(rng));avg+=density(z)/40000.;}
     M exact=density(v);exact(0,1)*=std::exp(-2*dt);exact(1,0)=exact(0,1);
     check((avg-exact).norm()<.0005,"SSE ensemble dephasing");
     for(int power=1;power<=3;++power){
@@ -90,7 +94,7 @@ int selftest(){
             double step=.002/steps;
             for(int trial=0;trial<samples;++trial){
                 V state=v;
-                for(int j=0;j<steps;++j)state=sse_step(state,h,h,lp,lp,step,std::sqrt(step)*normal(rng),1,power);
+                for(int j=0;j<steps;++j)state=measurement(state,lp.diagonal().real(),step,normal(rng));
                 double coherence=(state(0)*std::conj(state(1))).real(),population=std::norm(state(0));
                 sum+=coherence;sum2+=coherence*coherence;pops+=population;pops2+=population*population;
             }
@@ -101,14 +105,24 @@ int selftest(){
             std::cout<<"Ensemble X^"<<power<<" dt="<<step<<" coherence_error="<<error<<" MC_SE="<<se<<"\n";
         }
     }
+    // Strong measurement: exact Born populations and decoherence, even when
+    // an explicit drift step is grossly outside its stability range.
+    for(double clock:{.01,.1,1.,10.}){
+        R eigenvalues(2);eigenvalues<<-1,8;double sum=0,sum2=0,coh=0,coh2=0;int count=16000;
+        for(int j=0;j<count;++j){V state=measurement(v,eigenvalues,clock,normal(rng));double pop=std::norm(state(0)),off=(state(0)*std::conj(state(1))).real();sum+=pop;sum2+=pop*pop;coh+=off;coh2+=off*off;}
+        double se=std::sqrt(std::max(0.,sum2/count-std::pow(sum/count,2))/count);
+        double ce=std::sqrt(std::max(0.,coh2/count-std::pow(coh/count,2))/count);
+        check(std::abs(sum/count-.4)<5*se+1e-10,"Strong measurement Born population");
+        check(std::abs(coh/count-std::sqrt(.24)*std::exp(-40.5*clock))<5*ce+1e-10,"Strong measurement dephasing");
+    }
     std::cout<<"PASS: Fock operators, ground, exponential, GKLS, signed Wigner, all models, memory and SSE ensemble\n";return 0;
 }
 int main(int argc,char**argv){try{
     Config c;fs::path output="fock_output";std::string sweep="lambda",values;
     for(int k=1;k<argc;++k){std::string arg=argv[k];
         if(arg=="--self-test")return selftest();
-        if(arg=="--help"){std::cout<<"cosmic_fock --workflow adiabatic|closed|sse|lindblad|sweep|nm-sse|nm-density|nm-density-full --model x|x2|x3\n"
-            <<"--basis N --initial N --final N --step dN --frames N --times CSV --steps CSV --seed N --noise FILE --bath-noise FILE\n"
+        if(arg=="--help"){std::cout<<"cosmic_fock --workflow adiabatic|closed|sse|lindblad|sweep|nm-sse|nm-density --model x|x2|x3\n"
+            <<"--rtol V --atol V (NM error tolerances) --basis N --initial N --final N --step dN --frames N --times CSV --steps CSV --seed N --noise FILE --bath-noise FILE\n"
             <<"--hbar V --mu V --beta3 V --beta4 V --lambda V --hubble V --volume V --omega V --grid N --extent V --no-wigner --output DIR\n"
             <<"--sweep lambda|hubble --values CSV; Hubble zero is the adiabatic reference.\n";return 0;}
         if(arg=="--no-wigner"){c.wigner=false;continue;}
@@ -118,6 +132,7 @@ int main(int argc,char**argv){try{
         else if(arg=="--initial")c.initial=std::stod(v);else if(arg=="--final")c.final=std::stod(v);else if(arg=="--step")c.step=std::stod(v);
         else if(arg=="--hbar")c.hbar=std::stod(v);else if(arg=="--mu")c.mu=std::stod(v);else if(arg=="--beta3")c.beta3=std::stod(v);else if(arg=="--beta4")c.beta4=std::stod(v);
         else if(arg=="--lambda")c.lambda=std::stod(v);else if(arg=="--hubble")c.H=std::stod(v);else if(arg=="--volume")c.volume=std::stod(v);
+        else if(arg=="--rtol")c.rtol=std::stod(v);else if(arg=="--atol")c.atol=std::stod(v);
         else if(arg=="--omega")c.omega=std::stod(v);else if(arg=="--extent")c.extent=std::stod(v);else if(arg=="--seed")c.seed=std::stoull(v);
         else if(arg=="--times")c.times=numbers(v);else if(arg=="--steps")c.steps=numbers(v);else if(arg=="--noise")c.noise=read_numbers(v);
         else if(arg=="--bath-noise"){auto a=read_numbers(v);check(a.size()==8,"Bath noise requires four real/imaginary pairs");for(int j=0;j<4;++j)c.zeta.emplace_back(a[2*j],a[2*j+1]);}
